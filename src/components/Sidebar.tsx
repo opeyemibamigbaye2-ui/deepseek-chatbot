@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { FiPlus, FiTrash2, FiEdit3, FiMessageSquare, FiCheck, FiX } from "react-icons/fi";
+import {
+  FiPlus,
+  FiTrash2,
+  FiEdit3,
+  FiMessageSquare,
+  FiCheck,
+  FiX,
+  FiChevronLeft,
+} from "react-icons/fi";
 import type { Thread } from "@/lib/types";
 
 interface SidebarProps {
@@ -13,8 +21,13 @@ interface SidebarProps {
   onDeleteThread: (id: string) => void;
   onRenameThread: (id: string, title: string) => void;
   onToggleSettings: () => void;
+  onImportRepo: () => void;
+  /** Mobile overlay open/close */
   isOpen: boolean;
   onToggle: () => void;
+  /** Desktop collapse state (persisted in localStorage) */
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 export default function Sidebar({
@@ -26,8 +39,11 @@ export default function Sidebar({
   onDeleteThread,
   onRenameThread,
   onToggleSettings,
+  onImportRepo,
   isOpen,
   onToggle,
+  isCollapsed,
+  onToggleCollapse,
 }: SidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -56,7 +72,9 @@ export default function Sidebar({
   const handleDelete = useCallback(
     (id: string, e: React.MouseEvent) => {
       e.stopPropagation();
-      onDeleteThread(id);
+      if (window.confirm("Delete this conversation? This cannot be undone.")) {
+        onDeleteThread(id);
+      }
     },
     [onDeleteThread]
   );
@@ -64,12 +82,29 @@ export default function Sidebar({
   const formatDate = (timestamp: number): string => {
     const date = new Date(timestamp);
     const now = new Date();
-    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+    const diffDays = Math.floor(
+      (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
+    );
     if (diffDays === 0) return "Today";
     if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return `${diffDays}d ago`;
     return date.toLocaleDateString();
   };
+
+  // ---- Responsive visibility logic ----
+  // Mobile (<md):  isOpen ? slide in (overlay) : slide off-screen
+  // Desktop (≥md): isCollapsed ? slide off-screen (fixed, out of flow)
+  //                          : in normal flow at 260px (static)
+  const asideClasses = [
+    "fixed inset-y-0 left-0 z-40 w-[260px] flex flex-col",
+    "transition-transform duration-300 ease-in-out",
+    // Mobile
+    isOpen ? "translate-x-0" : "-translate-x-full",
+    // Desktop
+    isCollapsed
+      ? "md:fixed md:-translate-x-full"
+      : "md:static md:translate-x-0",
+  ].join(" ");
 
   return (
     <>
@@ -83,16 +118,25 @@ export default function Sidebar({
 
       {/* Sidebar */}
       <aside
-        className={`fixed md:static inset-y-0 left-0 z-40 w-72 flex flex-col transition-transform duration-300 ease-in-out ${
-          isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0 md:w-0 md:overflow-hidden"
-        }`}
+        suppressHydrationWarning
+        className={asideClasses}
         style={{
           backgroundColor: "var(--bg-sidebar)",
           borderRight: `1px solid var(--border-color)`,
         }}
       >
-        {/* New Chat + Settings */}
+        {/* Header row: Collapse toggle + New Chat + Settings */}
         <div className="flex-shrink-0 p-3 flex items-center gap-2">
+          {/* Desktop collapse button */}
+          <button
+            onClick={onToggleCollapse}
+            className="hidden md:flex p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex-shrink-0"
+            style={{ color: "var(--text-secondary)" }}
+            title="Collapse sidebar"
+          >
+            <FiChevronLeft size={18} />
+          </button>
+
           <button
             onClick={onNewChat}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-medium transition-colors"
@@ -100,6 +144,29 @@ export default function Sidebar({
           >
             <FiPlus size={16} />
             <span>New Chat</span>
+          </button>
+          <button
+            onClick={onImportRepo}
+            className="p-2.5 rounded-xl text-sm transition-colors"
+            style={{
+              color: "var(--text-secondary)",
+              backgroundColor: "var(--bg-secondary)",
+            }}
+            title="Import Repository"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="16 18 22 12 16 6" />
+              <polyline points="8 6 2 12 8 18" />
+            </svg>
           </button>
           <button
             onClick={onToggleSettings}
@@ -110,7 +177,17 @@ export default function Sidebar({
             }}
             title="Settings"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <circle cx="12" cy="12" r="3" />
               <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
             </svg>
@@ -154,11 +231,29 @@ export default function Sidebar({
                 color: "var(--text-primary)",
               }}
             >
-              <FiMessageSquare
-                size={14}
-                className="flex-shrink-0"
-                style={{ color: "var(--text-tertiary)" }}
-              />
+              {thread.type === "repo" ? (
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="flex-shrink-0"
+                  style={{ color: "var(--accent)" }}
+                >
+                  <polyline points="16 18 22 12 16 6" />
+                  <polyline points="8 6 2 12 8 18" />
+                </svg>
+              ) : (
+                <FiMessageSquare
+                  size={14}
+                  className="flex-shrink-0"
+                  style={{ color: "var(--text-tertiary)" }}
+                />
+              )}
 
               <div className="flex-1 min-w-0">
                 {editingId === thread.id ? (
@@ -204,7 +299,10 @@ export default function Sidebar({
                   </div>
                 )}
                 {editingId !== thread.id && (
-                  <p className="text-[10px]" style={{ color: "var(--text-tertiary)" }}>
+                  <p
+                    className="text-[10px]"
+                    style={{ color: "var(--text-tertiary)" }}
+                  >
                     {formatDate(thread.updatedAt)}
                   </p>
                 )}
@@ -218,7 +316,10 @@ export default function Sidebar({
                     className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10"
                     title="Rename"
                   >
-                    <FiEdit3 size={12} style={{ color: "var(--text-tertiary)" }} />
+                    <FiEdit3
+                      size={12}
+                      style={{ color: "var(--text-tertiary)" }}
+                    />
                   </button>
                   <button
                     onClick={(e) => handleDelete(thread.id, e)}

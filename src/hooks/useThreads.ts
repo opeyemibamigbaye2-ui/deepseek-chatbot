@@ -90,6 +90,56 @@ export function useThreads() {
     [activeThreadId]
   );
 
+  /**
+   * Auto-generate a thread title from the first user message.
+   * Truncates to ~40 characters and appends "…" if needed.
+   */
+  const autoTitleThread = useCallback(
+    async (threadId: string, firstMessage: string) => {
+      const cleaned = firstMessage.trim().replace(/\n/g, " ");
+      const title = cleaned.length > 40 ? cleaned.slice(0, 40) + "…" : cleaned;
+      await renameThread(threadId, title);
+      await refreshThreads();
+      if (activeThreadId === threadId && activeThread) {
+        setActiveThread({ ...activeThread, title });
+      }
+    },
+    [activeThreadId, activeThread, refreshThreads]
+  );
+
+  /** Clear the active thread (used for "New Chat" without creating a thread) */
+  const clearActiveThread = useCallback(() => {
+    setActiveThread(null);
+    setActiveThreadId(null);
+  }, []);
+
+  /** Create a new repo-aware thread */
+  const newRepoThread = useCallback(
+    async (
+      systemPrompt: string,
+      repoMeta: import("@/lib/repo-types").RepoMeta,
+      repoFiles: import("@/lib/repo-types").RepoFile[]
+    ) => {
+      const thread: Thread = {
+        id: nanoid(),
+        title: `Repo: ${repoMeta.fullName}`,
+        messages: [],
+        systemPrompt,
+        type: "repo",
+        repoMeta,
+        repoFiles,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      await createThread(thread);
+      await refreshThreads();
+      setActiveThread(thread);
+      setActiveThreadId(thread.id);
+      return thread;
+    },
+    [refreshThreads]
+  );
+
   return {
     threads,
     activeThread,
@@ -97,9 +147,12 @@ export function useThreads() {
     isLoading,
     loadThread,
     newThread,
+    newRepoThread,
     removeThread,
     rename,
     addMessage,
+    autoTitleThread,
+    clearActiveThread,
     refreshThreads,
   };
 }

@@ -1,9 +1,10 @@
 // IndexedDB persistence layer using Dexie.js
-// Handles CRUD operations for chat threads and application settings
+// Handles CRUD operations for chat threads and application settings.
+// Includes migration for old-format messages on read.
 
 import Dexie, { type Table } from "dexie";
 import type { Thread, Message, AppSettings } from "./types";
-import { DEFAULT_SETTINGS } from "./types";
+import { DEFAULT_SETTINGS, migrateMessage } from "./types";
 
 /** Extended Dexie database with typed tables */
 class ChatDatabase extends Dexie {
@@ -23,18 +24,35 @@ class ChatDatabase extends Dexie {
 
 const db = new ChatDatabase();
 
+/**
+ * Load messages for a thread, migrating any old-format records.
+ * Old messages may have missing/undefined content or invalid roles;
+ * migrateMessage normalizes them or returns null for unrecoverable rows.
+ */
+async function loadThreadMessages(messageIds: string[]): Promise<Message[]> {
+  if (messageIds.length === 0) return [];
+
+  const rawMessages = await db.messages.where("id").anyOf(messageIds).toArray();
+
+  const migrated: Message[] = [];
+  for (const raw of rawMessages) {
+    const msg = migrateMessage(raw as unknown as Record<string, unknown>);
+    if (msg) {
+      migrated.push(msg);
+    }
+  }
+
+  migrated.sort((a, b) => a.createdAt - b.createdAt);
+  return migrated;
+}
+
 /** ---- Thread Operations ---- */
 
 /** Fetch all threads, sorted by most recently updated */
 export async function getAllThreads(): Promise<Thread[]> {
   const threads = await db.threads.orderBy("updatedAt").reverse().toArray();
-  // Hydrate messages for each thread
   for (const thread of threads) {
-    thread.messages = await db.messages
-      .where("id")
-      .anyOf(thread.messages.map((m) => m.id))
-      .toArray();
-    thread.messages.sort((a, b) => a.createdAt - b.createdAt);
+    thread.messages = await loadThreadMessages(thread.messages.map((m) => m.id));
   }
   return threads;
 }
@@ -43,18 +61,13 @@ export async function getAllThreads(): Promise<Thread[]> {
 export async function getThread(id: string): Promise<Thread | undefined> {
   const thread = await db.threads.get(id);
   if (!thread) return undefined;
-  thread.messages = await db.messages
-    .where("id")
-    .anyOf(thread.messages.map((m) => m.id))
-    .toArray();
-  thread.messages.sort((a, b) => a.createdAt - b.createdAt);
+  thread.messages = await loadThreadMessages(thread.messages.map((m) => m.id));
   return thread;
 }
 
 /** Create a new thread */
 export async function createThread(thread: Thread): Promise<void> {
   await db.threads.put(thread);
-  // Insert all messages
   for (const msg of thread.messages) {
     await db.messages.put(msg);
   }
@@ -63,7 +76,6 @@ export async function createThread(thread: Thread): Promise<void> {
 /** Update an existing thread (title, messages, updatedAt) */
 export async function updateThread(thread: Thread): Promise<void> {
   await db.threads.put(thread);
-  // Upsert all messages
   for (const msg of thread.messages) {
     await db.messages.put(msg);
   }
