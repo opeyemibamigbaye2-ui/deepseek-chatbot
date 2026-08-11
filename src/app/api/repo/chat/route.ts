@@ -1,12 +1,16 @@
 // API Route: /api/repo/chat
 // Repo-aware chat: selects relevant context from indexed repo files,
 // stuffs it into the system prompt, and streams the response via DeepSeek.
+//
+// Uses the same message normalization as /api/chat to handle both
+// legacy { role, content } and UIMessage { role, parts } formats.
 
 import { NextRequest } from "next/server";
 import { createOpenAI } from "@ai-sdk/openai";
 import { streamText } from "ai";
-import type { RepoChatRequest } from "@/lib/repo-types";
+import { normalizeIncomingMessage } from "@/lib/types";
 import { selectContext, buildRepoSystemPrompt } from "@/lib/context-selector";
+import type { RepoMeta, RepoFile } from "@/lib/repo-types";
 
 const deepseek = createOpenAI({
   apiKey: process.env.DEEPSEEK_API_KEY ?? "",
@@ -23,55 +27,83 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: RepoChatRequest;
+  // 1. Parse body as unknown, validate shape manually (same pattern as /api/chat)
+  let body: Record<string, unknown>;
   try {
-    body = (await request.json()) as RepoChatRequest;
+    body = (await request.json()) as Record<string, unknown>;
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (!body.messages?.length || !body.repoFiles?.length) {
+  // 2. Validate and normalize messages
+  const rawMessages = body.messages;
+  if (!Array.isArray(rawMessages) || rawMessages.length === 0) {
     return Response.json(
-      { error: "Messages and repoFiles are required" },
+      { error: "Messages array is required and must not be empty" },
       { status: 400 }
     );
   }
 
-  // Get the last user message as the query for context selection
-  const lastUserMsg = [...body.messages].reverse().find((m) => m.role === "user");
+  const normalized = rawMessages
+    .map((m) =>
+      normalizeIncomingMessage(m as Parameters<typeof normalizeIncomingMessage>[0])
+    )
+    .filter((m): m is NonNullable<typeof m> => m !== null);
+
+  if (normalized.length === 0) {
+    return Response.json(
+      { error: "No valid messages after normalization" },
+      { status: 400 }
+    );
+  }
+
+  // 3. Extract repo metadata and files from the body
+  const repoMeta = body.repoMeta as RepoMeta | undefined;
+  const repoFiles = body.repoFiles as RepoFile[] | undefined;
+
+  if (!repoMeta || !repoFiles || repoFiles.length === 0) {
+    return Response.json(
+      { error: "repoMeta and repoFiles are required for repo-aware chat" },
+      { status: 400 }
+    );
+  }
+
+  // 4. Get the last user message as the query for context selection
+  const lastUserMsg = [...normalized].reverse().find((m) => m.role === "user");
   const query = lastUserMsg?.content ?? "";
 
-  // Select relevant context
-  const { context, includedFiles } = selectContext(query, body.repoFiles);
+  // 5. Select relevant context
+  const { context, includedFiles } = selectContext(query, repoFiles);
 
-  // Build the system prompt
-  const repoSysPrompt = buildRepoSystemPrompt(
-    body.repoMeta.fullName,
-    includedFiles
-  );
+  // 6. Build the system prompt
+  const repoSysPrompt = buildRepoSystemPrompt(repoMeta.fullName, includedFiles);
 
-  // Combine with user's custom system prompt if provided
-  const fullSystemPrompt = body.systemPrompt
-    ? `${body.systemPrompt}\n\n${repoSysPrompt}`
+  const customSystemPrompt =
+    typeof body.systemPrompt === "string" ? body.systemPrompt.trim() : undefined;
+
+  const fullSystemPrompt = customSystemPrompt
+    ? `${customSystemPrompt}\n\n${repoSysPrompt}`
     : repoSysPrompt;
 
-  // Build messages: system prompt + context + conversation
+  // 7. Prepend context to the last user message
   const contextBlock = context
     ? `\n\n---\n\n${context}\n\n---\n\nAnswer the user's question using the repository context above.`
     : "";
 
+  const messagesWithContext = normalized.map((m, i) => ({
+    role: m.role,
+    content:
+      i === normalized.length - 1 && m.role === "user"
+        ? m.content + contextBlock
+        : m.content,
+  }));
+
+  // 8. Call the AI model with streaming
   try {
     const result = streamText({
       model: deepseek(DEFAULT_MODEL),
       system: fullSystemPrompt,
-      messages: body.messages.map((m, i) => ({
-        role: m.role as "user" | "assistant",
-        // Prepend context to the last user message
-        content:
-          i === body.messages.length - 1 && m.role === "user"
-            ? m.content + contextBlock
-            : m.content,
-      })),
+      messages: messagesWithContext,
     });
 
     return result.toUIMessageStreamResponse();
@@ -79,6 +111,9 @@ export async function POST(request: NextRequest) {
     const message =
       error instanceof Error ? error.message : "Unknown error";
     console.error("Repo chat error:", message);
-    return Response.json({ error: `AI service error: ${message}` }, { status: 502 });
+    return Response.json(
+      { error: `AI service error: ${message}` },
+      { status: 502 }
+    );
   }
 }

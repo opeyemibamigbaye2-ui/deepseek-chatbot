@@ -209,6 +209,8 @@ export default function HomePage() {
             isStreaming={isStreaming}
             error={error}
             threadTitle={activeThread?.title}
+            repoFiles={activeThread?.repoFiles}
+            repoMeta={activeThread?.repoMeta}
           />
         </div>
 

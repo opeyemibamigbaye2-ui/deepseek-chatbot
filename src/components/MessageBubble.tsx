@@ -4,12 +4,23 @@ import { useState, useCallback } from "react";
 import { FiCopy, FiCheck, FiRefreshCw } from "react-icons/fi";
 import MarkdownRenderer from "./MarkdownRenderer";
 import type { Message } from "@/lib/types";
+import type { RepoMeta, RepoFile } from "@/lib/repo-types";
 
 interface MessageBubbleProps {
   message: Message;
   onRegenerate?: () => void;
   isLastAssistant?: boolean;
   isStreaming?: boolean;
+  /** Indexed repo files for citation lookup */
+  repoFiles?: RepoFile[];
+  /** Repo metadata for GitHub URL generation */
+  repoMeta?: RepoMeta;
+  /** Called when a citation badge is clicked */
+  onCitationClick?: (
+    filePath: string,
+    startLine: number,
+    endLine?: number
+  ) => void;
 }
 
 export default function MessageBubble({
@@ -17,6 +28,9 @@ export default function MessageBubble({
   onRegenerate,
   isLastAssistant = false,
   isStreaming = false,
+  repoFiles,
+  repoMeta,
+  onCitationClick,
 }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
   const isUser = message.role === "user";
@@ -52,7 +66,12 @@ export default function MessageBubble({
         {/* Assistant messages: rendered markdown */}
         {!isUser && (
           <div className="text-sm md:text-base">
-            <MarkdownRenderer content={message.content} />
+            <MarkdownRenderer
+              content={message.content}
+              repoFiles={repoFiles}
+              repoMeta={repoMeta}
+              onCitationClick={onCitationClick}
+            />
           </div>
         )}
 

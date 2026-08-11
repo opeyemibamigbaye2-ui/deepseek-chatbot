@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import MessageBubble from "./MessageBubble";
 import ChatInput from "./ChatInput";
+import CitationPanel from "./CitationPanel";
 import type { Message } from "@/lib/types";
-import { FiAlertCircle, FiLoader } from "react-icons/fi";
+import type { RepoMeta, RepoFile } from "@/lib/repo-types";
+import { FiAlertCircle } from "react-icons/fi";
 
 interface ChatWindowProps {
   messages: Message[];
@@ -14,6 +16,16 @@ interface ChatWindowProps {
   isStreaming: boolean;
   error: string | null;
   threadTitle?: string;
+  /** Indexed repo files for citation lookup */
+  repoFiles?: RepoFile[];
+  /** Repo metadata for GitHub URL generation */
+  repoMeta?: RepoMeta;
+}
+
+interface CitationState {
+  filePath: string;
+  startLine: number;
+  endLine?: number;
 }
 
 export default function ChatWindow({
@@ -24,8 +36,11 @@ export default function ChatWindow({
   isStreaming,
   error,
   threadTitle,
+  repoFiles,
+  repoMeta,
 }: ChatWindowProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [citation, setCitation] = useState<CitationState | null>(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -41,18 +56,19 @@ export default function ChatWindow({
     [onSendMessage]
   );
 
+  const handleCitationClick = useCallback(
+    (filePath: string, startLine: number, endLine?: number) => {
+      setCitation({ filePath, startLine, endLine });
+    },
+    []
+  );
+
+  const handleCloseCitation = useCallback(() => {
+    setCitation(null);
+  }, []);
+
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div
-        className="flex-shrink-0 px-4 py-3 border-b flex items-center gap-2"
-        style={{ borderColor: "var(--border-color)" }}
-      >
-        <h1 className="text-sm md:text-base font-semibold truncate" style={{ color: "var(--text-primary)" }}>
-          {threadTitle ?? "DeepSeek Chat"}
-        </h1>
-      </div>
-
       {/* Messages area */}
       <div
         ref={scrollRef}
@@ -61,10 +77,7 @@ export default function ChatWindow({
       >
         {messages.length === 0 && !isStreaming && (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <div
-              className="text-5xl mb-4"
-              style={{ opacity: 0.3 }}
-            >
+            <div className="text-5xl mb-4" style={{ opacity: 0.3 }}>
               💬
             </div>
             <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
@@ -87,6 +100,9 @@ export default function ChatWindow({
               idx === messages.length - 1
             }
             isStreaming={false}
+            repoFiles={repoFiles}
+            repoMeta={repoMeta}
+            onCitationClick={handleCitationClick}
           />
         ))}
 
@@ -147,6 +163,19 @@ export default function ChatWindow({
         isStreaming={isStreaming}
         disabled={false}
       />
+
+      {/* Citation Panel */}
+      {citation && (
+        <CitationPanel
+          isOpen={true}
+          onClose={handleCloseCitation}
+          filePath={citation.filePath}
+          startLine={citation.startLine}
+          endLine={citation.endLine}
+          repoFiles={repoFiles}
+          repoMeta={repoMeta}
+        />
+      )}
     </div>
   );
 }
