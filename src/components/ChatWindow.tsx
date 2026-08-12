@@ -2,15 +2,15 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import MessageBubble from "./MessageBubble";
-import ChatInput from "./ChatInput";
+import ChatInput, { type AttachedFile } from "./ChatInput";
 import CitationPanel from "./CitationPanel";
 import type { Message } from "@/lib/types";
 import type { RepoMeta, RepoFile } from "@/lib/repo-types";
-import { FiAlertCircle } from "react-icons/fi";
+import { FiAlertCircle, FiChevronDown } from "react-icons/fi";
 
 interface ChatWindowProps {
   messages: Message[];
-  onSendMessage: (content: string) => void;
+  onSendMessage: (content: string, attachments?: AttachedFile[]) => void;
   onRegenerate: () => void;
   onStopGeneration: () => void;
   isStreaming: boolean;
@@ -41,17 +41,59 @@ export default function ChatWindow({
 }: ChatWindowProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [citation, setCitation] = useState<CitationState | null>(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  const isNearBottomRef = useRef(true);
 
-  // Auto-scroll to bottom when new messages arrive
+  /** Check if the scroll container is near the bottom */
+  const checkNearBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const threshold = 150;
+    const nearBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    isNearBottomRef.current = nearBottom;
+    setShowScrollButton(!nearBottom && el.scrollHeight > el.clientHeight + 100);
+  }, []);
+
+  // Scroll event listener (throttled via rAF)
   useEffect(() => {
-    if (scrollRef.current) {
+    const el = scrollRef.current;
+    if (!el) return;
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          checkNearBottom();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [checkNearBottom]);
+
+  // Auto-scroll to bottom when new messages arrive, but ONLY if the user
+  // is already near the bottom. If they scrolled up to read, don't yank them.
+  useEffect(() => {
+    if (scrollRef.current && isNearBottomRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isStreaming]);
+    // Also re-check after messages change (e.g. streaming chunk arrived)
+    checkNearBottom();
+  }, [messages, isStreaming, checkNearBottom]);
+
+  /** Smooth-scroll to the bottom and hide the button */
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    setShowScrollButton(false);
+  }, []);
 
   const handleSend = useCallback(
-    (content: string) => {
-      onSendMessage(content);
+    (content: string, attachments?: AttachedFile[]) => {
+      onSendMessage(content, attachments);
     },
     [onSendMessage]
   );
@@ -68,7 +110,7 @@ export default function ChatWindow({
   }, []);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0 relative">
       {/* Messages area */}
       <div
         ref={scrollRef}
@@ -155,6 +197,25 @@ export default function ChatWindow({
           </div>
         )}
       </div>
+
+      {/* Scroll-to-bottom button */}
+      {showScrollButton && (
+        <div className="absolute bottom-[80px] left-1/2 -translate-x-1/2 z-10">
+          <button
+            onClick={scrollToBottom}
+            className="flex items-center justify-center w-10 h-10 rounded-full shadow-lg transition-all duration-200 hover:scale-110 active:scale-95 animate-fade-in"
+            style={{
+              backgroundColor: "var(--bg-secondary)",
+              color: "var(--accent)",
+              border: `1px solid var(--border-color)`,
+              boxShadow: "var(--shadow-md)",
+            }}
+            title="Scroll to bottom"
+          >
+            <FiChevronDown size={20} />
+          </button>
+        </div>
+      )}
 
       {/* Input bar */}
       <ChatInput

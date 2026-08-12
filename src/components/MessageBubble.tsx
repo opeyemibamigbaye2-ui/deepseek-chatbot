@@ -56,11 +56,22 @@ export default function MessageBubble({
           color: isUser ? "var(--user-text)" : "var(--assistant-text)",
         }}
       >
-        {/* User messages: plain text */}
+        {/* User messages: plain text + optional attachment indicator */}
         {isUser && (
-          <p className="whitespace-pre-wrap break-words text-sm md:text-base leading-relaxed">
-            {message.content}
-          </p>
+          <>
+            {/* Show attachment indicator if the message contains [Attached file:] blocks */}
+            {message.content.includes("[Attached file:") && (
+              <div className="flex items-center gap-1 mb-1.5 text-xs opacity-80">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                </svg>
+                <span>+ attached file(s)</span>
+              </div>
+            )}
+            <p className="whitespace-pre-wrap break-words text-sm md:text-base leading-relaxed">
+              {message.content}
+            </p>
+          </>
         )}
 
         {/* Assistant messages: rendered markdown */}

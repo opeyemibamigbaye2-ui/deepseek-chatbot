@@ -125,8 +125,19 @@ export default function HomePage() {
   );
 
   const handleSendMessage = useCallback(
-    (content: string) => {
-      sendMessage(content);
+    (content: string, attachments?: import("@/components/ChatInput").AttachedFile[]) => {
+      if (attachments && attachments.length > 0) {
+        // Prepend file contents to the message for the model
+        const fileBlocks = attachments
+          .map(
+            (f) =>
+              `[Attached file: ${f.name}]\n\`\`\`\n${f.content}\n\`\`\``
+          )
+          .join("\n\n");
+        sendMessage(`${fileBlocks}\n\n${content}`);
+      } else {
+        sendMessage(content);
+      }
     },
     [sendMessage]
   );
