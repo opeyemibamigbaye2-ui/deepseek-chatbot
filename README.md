@@ -137,7 +137,7 @@ deepseek-chatbot/
 
 ## Live Demo
 
-🔗 [https://deepseek-chatbot-demo.vercel.app](https://deepseek-chatbot-demo.vercel.app)
+🔗 https://deepseek-chatbot-psi.vercel.app
 
 ## License
 
