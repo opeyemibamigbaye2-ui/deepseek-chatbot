@@ -58,7 +58,7 @@ The headline feature: import any public GitHub repository and ask questions abou
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/deepseek-chatbot.git
+git clone https://github.com/opeyemibamigbaye2-ui/deepseek-chatbot.git
 cd deepseek-chatbot
 
 # Install dependencies
