@@ -44,6 +44,7 @@ export function useDeepSeekChat({
   repoFiles,
 }: UseDeepSeekChatOptions = {}) {
   const isRepoThread = !!repoMeta && !!repoFiles;
+
   // ---- Refs to avoid stale closures in callbacks ----
   const threadIdRef = useRef(threadId);
   threadIdRef.current = threadId;
@@ -55,7 +56,17 @@ export function useDeepSeekChat({
   // Track previous threadId to detect switches
   const prevThreadIdRef = useRef<string | undefined>(threadId);
 
+  // Keep repo data in refs — never include large arrays/objects in
+  // useMemo deps, as new references cause transport recreation → useChat
+  // reinitialization → infinite re-render loop in production.
+  const repoMetaRef = useRef(repoMeta);
+  repoMetaRef.current = repoMeta;
+  const repoFilesRef = useRef(repoFiles);
+  repoFilesRef.current = repoFiles;
+
   // ---- Memoize transport so useChat doesn't reinitialize on every render ----
+  // Only recreate when systemPrompt or the thread type (repo vs normal) changes.
+  // Repo data is read from refs at call time, avoiding dependency on large arrays.
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
@@ -63,14 +74,15 @@ export function useDeepSeekChat({
         body: isRepoThread
           ? {
               systemPrompt: systemPrompt ?? "You are a helpful assistant.",
-              repoMeta,
-              repoFiles,
+              repoMeta: repoMetaRef.current,
+              repoFiles: repoFilesRef.current,
             }
           : {
               systemPrompt: systemPrompt ?? "You are a helpful assistant.",
             },
       }),
-    [systemPrompt, isRepoThread, repoMeta, repoFiles]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [systemPrompt, isRepoThread]
   );
 
   // Convert initial messages once on mount

@@ -44,7 +44,10 @@ export default function ChatWindow({
   const [showScrollButton, setShowScrollButton] = useState(false);
   const isNearBottomRef = useRef(true);
 
-  /** Check if the scroll container is near the bottom */
+  /**
+   * Check scroll position and update button visibility.
+   * Uses functional state update to avoid depending on showScrollButton.
+   */
   const checkNearBottom = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -52,10 +55,13 @@ export default function ChatWindow({
     const nearBottom =
       el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
     isNearBottomRef.current = nearBottom;
-    setShowScrollButton(!nearBottom && el.scrollHeight > el.clientHeight + 100);
+    setShowScrollButton(
+      (prev) =>
+        !nearBottom && el.scrollHeight > el.clientHeight + 100
+    );
   }, []);
 
-  // Scroll event listener (throttled via rAF)
+  // Scroll event listener (throttled via rAF) — runs once on mount
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -70,8 +76,10 @@ export default function ChatWindow({
       }
     };
     el.addEventListener("scroll", onScroll, { passive: true });
+    checkNearBottom(); // initial check
     return () => el.removeEventListener("scroll", onScroll);
-  }, [checkNearBottom]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-scroll to bottom when new messages arrive, but ONLY if the user
   // is already near the bottom. If they scrolled up to read, don't yank them.
@@ -79,9 +87,9 @@ export default function ChatWindow({
     if (scrollRef.current && isNearBottomRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-    // Also re-check after messages change (e.g. streaming chunk arrived)
     checkNearBottom();
-  }, [messages, isStreaming, checkNearBottom]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, isStreaming]);
 
   /** Smooth-scroll to the bottom and hide the button */
   const scrollToBottom = useCallback(() => {
